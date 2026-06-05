@@ -1,0 +1,8 @@
+# Development and testing dependencies
+pytest>=6.2.0
+pytest-cov>=2.12.0
+black>=21.0
+flake8>=3.9.0
+mypy>=0.900
+isort>=5.9.0
+pylint>=2.8.0

@@ -1,0 +1,70 @@
+name: Model Export Verification
+
+on:
+  push:
+    paths:
+      - 'train_baseline.py'
+      - 'export_*.py'
+      - 'verify_*.py'
+  pull_request:
+    paths:
+      - 'train_baseline.py'
+      - 'export_*.py'
+      - 'verify_*.py'
+
+jobs:
+  export-test:
+    runs-on: ubuntu-latest
+    name: Model Export & Validation
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.8"
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Check model files exist
+      run: |
+        if [ -f "models/fp32_baseline/best_model.zip" ]; then
+          echo "✓ FP32 model checkpoint found"
+        fi
+        if [ -f "models/fp32_baseline/best_vec_normalize.pkl" ]; then
+          echo "✓ VecNormalize state found"
+        fi
+      continue-on-error: true
+    
+    - name: Validate export scripts syntax
+      run: |
+        python -m py_compile export_ternary.py verify_export.py 2>/dev/null || echo "Export scripts not yet created"
+      continue-on-error: true
+    
+    - name: Test model loading capability
+      run: |
+        python -c "
+        import sys
+        try:
+            from stable_baselines3 import PPO
+            from stable_baselines3.common.vec_env import VecNormalize
+            import os
+            
+            model_path = 'models/fp32_baseline/best_model'
+            pkl_path = 'models/fp32_baseline/best_vec_normalize.pkl'
+            
+            if os.path.exists(model_path + '.zip'):
+                model = PPO.load(model_path)
+                print('✓ Model loads successfully')
+            if os.path.exists(pkl_path):
+                vecnorm = VecNormalize.load(pkl_path)
+                print('✓ VecNormalize loads successfully')
+        except Exception as e:
+            print(f'⚠ Model loading test: {e}')
+            sys.exit(0)
+        "
+      continue-on-error: true

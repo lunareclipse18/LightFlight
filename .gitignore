@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+venv/
+.venv/
+models/
+logs/
+lwn_flight_tensorboard/
+*.log
+*.npz
+backups/
+.vscode/
+.idea/
+*.save
