@@ -5,6 +5,7 @@ import os
 from gymfc_nf.envs import *
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from scipy import stats
 
 SDF_PATH   = "/home/lunareclipse18/LightFlight/models/evoque_v2/model.sdf"
 MODEL_PATH = "models/fp32_baseline/best_model"
@@ -156,6 +157,10 @@ ax_bottom.set_ylabel('Avg RMSE (deg/s)')
 ax_bottom.set_title(f'Avg RMSE per seed  (overall mean={avg_rmse:.2f} deg/s)')
 ax_bottom.legend(fontsize=9)
 ax_bottom.grid(True, axis='y')
+
+n = len(all_rmse)
+ci95 = stats.t.ppf(0.975, df=n-1) * std_rmse / np.sqrt(n)
+print(f"  95% CI    roll=±{ci95[0]:.2f}  pitch=±{ci95[1]:.2f}  yaw=±{ci95[2]:.2f}")
 
 plt.suptitle(f'FP32 LightFlight — {NUM_EVAL_SEEDS}-seed Eval  (mean avg RMSE {avg_rmse:.2f} deg/s)', fontsize=13)
 plt.tight_layout()

@@ -2,10 +2,11 @@ import gym
 import torch.nn as nn
 import numpy as np
 import os
+import copy
 from gymfc_nf.envs import *
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.callbacks import EvalCallback, BaseCallback, CheckpointCallback
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize, SubprocVecEnv
 from typing import Callable
 
 
@@ -91,15 +92,11 @@ def make_env(seed=None):
 
 
 class CurriculumCallback(BaseCallback):
-    """
-    Linearly ramps max_rate from start_fraction to 1.0 over ramp_steps,
-    then holds at full difficulty for the rest of training.
-    """
-    def __init__(self, ramp_steps: int = 3_000_000, start_fraction: float = 0.15,
-                 verbose: int = 0):
+    def __init__(self, ramp_steps: int = 3_000_000, start_fraction: float = 0.15, verbose: int = 0):
         super().__init__(verbose)
         self.ramp_steps     = ramp_steps
         self.start_fraction = start_fraction
+        self.current_fraction = start_fraction
 
     def _on_step(self) -> bool:
         if self.num_timesteps % 4096 == 0:
@@ -113,16 +110,34 @@ class CurriculumCallback(BaseCallback):
                         wrapper.set_max_rate(fraction)
                         break
                     wrapper = getattr(wrapper, 'gym_env', None) or getattr(wrapper, 'env', None)
+        if self.num_timesteps % 50_000 == 0:
+            buf = self.model.rollout_buffer
+            print(f"[Reward stats] raw mean={buf.rewards.mean():.2f} "
+                f"normalized mean={buf.returns.mean():.2f}")
         return True
 
 
 class SyncEvalCallback(EvalCallback):
+    def __init__(self, *args, curriculum_callback=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.curriculum_callback = curriculum_callback
+    
     def _on_step(self) -> bool:
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
             if isinstance(self.training_env, VecNormalize) and \
                isinstance(self.eval_env, VecNormalize):
-                self.eval_env.obs_rms = self.training_env.obs_rms
-                self.eval_env.ret_rms = self.training_env.ret_rms
+                self.eval_env.obs_rms = copy.deepcopy(self.training_env.obs_rms)
+                self.eval_env.ret_rms = copy.deepcopy(self.training_env.ret_rms)
+            
+            if self.curriculum_callback is not None:
+                fraction = self.curriculum_callback.current_fraction
+                for env in self.eval_env.venv.envs:
+                    wrapper = env
+                    while wrapper is not None:
+                        if isinstance(wrapper, EvoqueWrapper):
+                            wrapper.set_max_rate(fraction)
+                            break
+                        wrapper = getattr(wrapper, 'gym_env', None) or getattr(wrapper, 'env', None)
 
         prev_best = self.best_mean_reward
         result    = super()._on_step()
@@ -137,12 +152,10 @@ class SyncEvalCallback(EvalCallback):
 
 
 def main():
-    env = DummyVecEnv([make_env(seed=None)])
+    env      = DummyVecEnv([make_env(seed=None)])
     env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=10.0)
 
-    # 5 diverse seeds — best_model selection based on mean over varied setpoints,
-    # not just one potentially easy or hard episode
-    eval_env = DummyVecEnv([make_env(seed=i) for i in range(5)])
+    eval_env = DummyVecEnv([make_env(seed=i) for i in range(100, 105)])
     eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
 
     policy_kwargs = dict(
@@ -166,26 +179,33 @@ def main():
         device='cpu',
         tensorboard_log="./lwn_flight_tensorboard/"
     )
+    
+    curriculum_callback = CurriculumCallback(
+        ramp_steps=3_000_000,   # longer ramp — full difficulty at 3M not 2M
+        start_fraction=0.15     # start even easier
+    )
 
     eval_callback = SyncEvalCallback(
         eval_env,
         best_model_save_path="./models/fp32_baseline/",
         log_path="./logs/",
         eval_freq=50_000,
-        n_eval_episodes=5,      # one episode per eval env seed
+        n_eval_episodes=5,
         deterministic=True,
-        render=False
+        render=False,
+        curriculum_callback=curriculum_callback
     )
 
-    curriculum_callback = CurriculumCallback(
-        ramp_steps=3_000_000,   # longer ramp — full difficulty at 3M not 2M
-        start_fraction=0.15     # start even easier
+    checkpoint_callback = CheckpointCallback(
+    save_freq=500_000,
+    save_path="./models/checkpoints/",
+    name_prefix="ppo_lightflight"
     )
 
     print("Starting FP32 baseline training with curriculum...")
     model.learn(
         total_timesteps=6_000_000,
-        callback=[eval_callback, curriculum_callback]
+        callback=[eval_callback, curriculum_callback, checkpoint_callback]
     )
     model.save("models/fp32_baseline/final_fp32_model")
     env.save("models/fp32_baseline/vec_normalize.pkl")
