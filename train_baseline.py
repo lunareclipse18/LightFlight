@@ -119,17 +119,13 @@ class CurriculumCallback(BaseCallback):
 
 
 class SyncEvalCallback(EvalCallback):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-    
     def _on_step(self) -> bool:
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
             if isinstance(self.training_env, VecNormalize) and \
                isinstance(self.eval_env, VecNormalize):
                 self.eval_env.obs_rms = copy.deepcopy(self.training_env.obs_rms)
                 self.eval_env.ret_rms = copy.deepcopy(self.training_env.ret_rms)
-            
-        
+
         prev_best = self.best_mean_reward
         result    = super()._on_step()
 
@@ -140,7 +136,6 @@ class SyncEvalCallback(EvalCallback):
             self.training_env.save(pkl_path)
 
         return result
-
 
 def main():
     env      = DummyVecEnv([make_env(seed=None)])
@@ -184,7 +179,6 @@ def main():
         n_eval_episodes=5,
         deterministic=True,
         render=False,
-        curriculum_callback=curriculum_callback
     )
 
     checkpoint_callback = CheckpointCallback(
