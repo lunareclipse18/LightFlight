@@ -6,7 +6,7 @@ import copy
 from gymfc_nf.envs import *
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback, CheckpointCallback
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize, SubprocVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from typing import Callable
 
 
@@ -102,6 +102,7 @@ class CurriculumCallback(BaseCallback):
         if self.num_timesteps % 4096 == 0:
             progress = min(self.num_timesteps / self.ramp_steps, 1.0)
             fraction = self.start_fraction + progress * (1.0 - self.start_fraction)
+            self.current_fraction = fraction
             venv = getattr(self.training_env, 'venv', self.training_env)
             for env in venv.envs:
                 wrapper = env
@@ -112,15 +113,14 @@ class CurriculumCallback(BaseCallback):
                     wrapper = getattr(wrapper, 'gym_env', None) or getattr(wrapper, 'env', None)
         if self.num_timesteps % 50_000 == 0:
             buf = self.model.rollout_buffer
-            print(f"[Reward stats] raw mean={buf.rewards.mean():.2f} "
+            print(f"[Reward stats] normalized mean={buf.rewards.mean():.2f} "
                 f"normalized mean={buf.returns.mean():.2f}")
         return True
 
 
 class SyncEvalCallback(EvalCallback):
-    def __init__(self, *args, curriculum_callback=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.curriculum_callback = curriculum_callback
     
     def _on_step(self) -> bool:
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
@@ -129,16 +129,7 @@ class SyncEvalCallback(EvalCallback):
                 self.eval_env.obs_rms = copy.deepcopy(self.training_env.obs_rms)
                 self.eval_env.ret_rms = copy.deepcopy(self.training_env.ret_rms)
             
-            if self.curriculum_callback is not None:
-                fraction = self.curriculum_callback.current_fraction
-                for env in self.eval_env.venv.envs:
-                    wrapper = env
-                    while wrapper is not None:
-                        if isinstance(wrapper, EvoqueWrapper):
-                            wrapper.set_max_rate(fraction)
-                            break
-                        wrapper = getattr(wrapper, 'gym_env', None) or getattr(wrapper, 'env', None)
-
+        
         prev_best = self.best_mean_reward
         result    = super()._on_step()
 

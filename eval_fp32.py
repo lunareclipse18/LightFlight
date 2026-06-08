@@ -158,6 +158,10 @@ ax_bottom.set_title(f'Avg RMSE per seed  (overall mean={avg_rmse:.2f} deg/s)')
 ax_bottom.legend(fontsize=9)
 ax_bottom.grid(True, axis='y')
 
+t_stat, p_val = stats.ttest_1samp(seed_avgs, 13.8)
+if p_val < 0.05:
+    print("✗ Significantly worse (p < 0.05)")
+
 n = len(all_rmse)
 ci95 = stats.t.ppf(0.975, df=n-1) * std_rmse / np.sqrt(n)
 print(f"  95% CI    roll=±{ci95[0]:.2f}  pitch=±{ci95[1]:.2f}  yaw=±{ci95[2]:.2f}")
