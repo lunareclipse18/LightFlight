@@ -118,7 +118,7 @@ print(f"Results over {NUM_EVAL_SEEDS} seeds:")
 print(f"  Mean RMSE  roll={mean_rmse[0]:.2f}  pitch={mean_rmse[1]:.2f}  yaw={mean_rmse[2]:.2f}  avg={avg_rmse:.2f} deg/s")
 print(f"  Std        roll={std_rmse[0]:.2f}   pitch={std_rmse[1]:.2f}   yaw={std_rmse[2]:.2f}")
 print(f"\n  NeuroFlight baseline: ~13.8 deg/s avg")
-print(f"  {'BEATS' if avg_rmse < 13.8 else 'BELOW'} NeuroFlight baseline")
+print(f"  {'BEATS' if avg_rmse < 13.8 else 'WORSE THAN'} NeuroFlight baseline")
 print(f"{'='*60}")
 
 # ── Plot: step response (seed=0) + per-axis RMSE distribution ────────────────
